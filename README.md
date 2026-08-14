@@ -15,7 +15,7 @@ Downloads historical tick data from the public **Dukascopy** datafeed using GitH
 - `convert.py` — converts raw CSV to the target format
 
 ### How to use
-1. Go to **Actions → Download EURUSD tick data → Run workflow**.
+1. Go to **Actions → Download Dukascopy tick data → Run workflow**.
 2. Set **Instrument**, **Start** and **End** (GMT).
 3. When the run finishes, download the zip from the **Releases** page.
 
@@ -44,7 +44,7 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 - `convert.py` — تبدیل CSV خام به فرمت نهایی
 
 ### نحوه استفاده
-1. به مسیر **Actions → Download EURUSD tick data → Run workflow** بروید.
+1. به مسیر **Actions → Download Dukascopy tick data → Run workflow** بروید.
 2. **نماد**، **شروع** و **پایان** (به وقت GMT) را وارد کنید.
 3. پس از اتمام، فایل زیپ را از صفحه **Releases** دانلود کنید.
 
@@ -77,7 +77,7 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 - `convert.py` — конвертер CSV
 
 ### Как использовать
-1. Откройте **Actions → Download EURUSD tick data → Run workflow**.
+1. Откройте **Actions → Download Dukascopy tick data → Run workflow**.
 2. Укажите **инструмент**, **начало** и **конец** (по GMT).
 3. После завершения скачайте zip со страницы **Releases**.
 
@@ -107,7 +107,7 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 - `convert.py` — سكربت تحويل CSV
 
 ### طريقة الاستخدام
-1. اذهب إلى **Actions → Download EURUSD tick data → Run workflow**.
+1. اذهب إلى **Actions → Download Dukascopy tick data → Run workflow**.
 2. أدخل **الأداة** و**البداية** و**النهاية** (بتوقيت GMT).
 3. بعد الانتهاء، حمّل الملف المضغوط من صفحة **Releases**.
 
@@ -137,7 +137,7 @@ Descarga datos históricos de ticks desde el feed público de **Dukascopy** medi
 - `convert.py` — script de conversión de CSV
 
 ### Cómo usarlo
-1. Ve a **Actions → Download EURUSD tick data → Run workflow**.
+1. Ve a **Actions → Download Dukascopy tick data → Run workflow**.
 2. Indica el **instrumento**, el **inicio** y el **fin** (en GMT).
 3. Al terminar, descarga el zip desde la página **Releases**.
 
