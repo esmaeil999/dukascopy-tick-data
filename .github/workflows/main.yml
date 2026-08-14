@@ -2,6 +2,19 @@ name: Download EURUSD tick data
 
 on:
   workflow_dispatch:
+    inputs:
+      instrument:
+        description: "Instrument (e.g. EURUSD)"
+        required: true
+        default: "EURUSD"
+      from:
+        description: "Start, GMT — YYYY-MM-DD HH:mm:ss"
+        required: true
+        default: "2025-01-01 00:00:00"
+      to:
+        description: "End, GMT — YYYY-MM-DD HH:mm:ss"
+        required: true
+        default: "2025-01-02 00:00:00"
 
 permissions:
   contents: write
@@ -9,14 +22,10 @@ permissions:
 jobs:
   download:
     runs-on: ubuntu-latest
-    timeout-minutes: 350          # سقف ۶ ساعت برای هر job
-    strategy:
-      fail-fast: false            # خرابی یک سال، بقیه را کنسل نکند
-      matrix:
-        year: [2010]
+    timeout-minutes: 350
 
     steps:
-      - uses: actions/checkout@v4   # برای دسترسی به convert.py
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -28,25 +37,34 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Download ticks for year ${{ matrix.year }}
+      - name: Prepare names
+        id: meta
         run: |
-          NEXT=$(( ${{ matrix.year }} + 1 ))
+          FROM_DATE=$(echo "${{ inputs.from }}" | cut -d' ' -f1)
+          TO_DATE=$(echo "${{ inputs.to }}" | cut -d' ' -f1)
+          SLUG=$(echo "${{ inputs.instrument }}" | tr 'A-Z' 'a-z')-ticks-${FROM_DATE}-to-${TO_DATE}
+          echo "slug=${SLUG}" >> "$GITHUB_OUTPUT"
+          echo "from_date=${FROM_DATE}" >> "$GITHUB_OUTPUT"
+          echo "to_date=${TO_DATE}" >> "$GITHUB_OUTPUT"
+
+      - name: Download ticks
+        run: |
           npx -y dukascopy-node \
-            -i eurusd \
-            -from ${{ matrix.year }}-01-01 \
-            -to ${NEXT}-01-01 \
+            -i $(echo "${{ inputs.instrument }}" | tr 'A-Z' 'a-z') \
+            -from ${{ steps.meta.outputs.from_date }} \
+            -to ${{ steps.meta.outputs.to_date }} \
             -t tick \
             -f csv
 
       - name: Convert CSV to JForex format (GMT)
-        run: python convert.py eurusd-ticks-${{ matrix.year }}.csv
+        run: python convert.py ${{ steps.meta.outputs.slug }}.csv
 
       - name: Zip CSV (reduce size)
-        run: zip -9 -j eurusd-ticks-${{ matrix.year }}.zip eurusd-ticks-${{ matrix.year }}.csv
+        run: zip -9 -j ${{ steps.meta.outputs.slug }}.zip ${{ steps.meta.outputs.slug }}.csv
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ticks-${{ matrix.year }}
-          name: EURUSD ticks ${{ matrix.year }}
-          files: ./eurusd-ticks-${{ matrix.year }}.zip
+          tag_name: ${{ steps.meta.outputs.slug }}
+          name: ${{ inputs.instrument }} ticks ${{ steps.meta.outputs.from_date }} to ${{ steps.meta.outputs.to_date }}
+          files: ./${{ steps.meta.outputs.slug }}.zip
