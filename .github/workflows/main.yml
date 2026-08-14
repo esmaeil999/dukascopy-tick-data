@@ -1,4 +1,4 @@
-name: Download EURUSD tick data
+name: Download Dukascopy tick data
 
 on:
   workflow_dispatch:
