@@ -2,7 +2,7 @@
 
 [English](#english) | [فارسی](#فارسی) | [Русский](#русский) | [العربية](#العربية) | [Español](#español)
 
----<img width="212" height="163" alt="image" src="https://github.com/user-attachments/assets/af7f14eb-5b03-4bcf-b833-17099e569e4f" />
+---
 
 
 <a name="english"></a>
