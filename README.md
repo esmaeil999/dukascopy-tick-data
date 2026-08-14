@@ -27,18 +27,7 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 **MetaTrader 5 (recommended):**
 1. `View → Symbols (Ctrl+U)` → **Custom** → **Create Custom Symbol** (e.g. `EURUSD.ticks`).
 2. Open the symbol → **Ticks** tab → **Import Ticks**.
-3. MT5 expects **tab-separated** ticks with this header:
-   `<DATE>	<TIME>	<BID>	<ASK>	<LAST>	<VOLUME>	<FLAGS>` and dates as `YYYY.MM.DD`.
-   Convert the CSV with this one-liner (Python):
-​
-import sys
-print("<DATE>t<TIME>t<BID>t<ASK>t<LAST>t<VOLUME>t<FLAGS>")
-for i, line in enumerate(open("ticks.csv")):
-if i == 0: continue
-t, bid, ask, bv, av = line.strip().split(",")
-d, tm = t.split(" ")
-print(f"{d.replace('-', '.')}t{tm}t{bid}t{ask}t0t0t2")
-4. Use the custom symbol in the **Strategy Tester** (Every tick based on real ticks).
+3. Use the custom symbol in the **Strategy Tester** (Every tick based on real ticks).
 
 **MetaTrader 4:** MT4 cannot import tick CSVs natively. Use **TickStory** or **Birt's CSV2FXT** to convert the CSV into `.fxt`/`.hst` files for 99% modelling-quality backtests.
 
@@ -71,8 +60,7 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 **متاتریدر ۵ (پیشنهادی):**
 1. از منوی `View → Symbols (Ctrl+U)` بخش **Custom** یک **نماد سفارشی** بسازید (مثلاً `EURUSD.ticks`).
 2. نماد را باز کنید → تب **Ticks** → **Import Ticks**.
-3. متاتریدر ۵ فایل **tab-separated** با تاریخ به شکل `YYYY.MM.DD` و ستون‌های `<DATE> <TIME> <BID> <ASK> <LAST> <VOLUME> <FLAGS>` می‌خواهد؛ اسکریپت تبدیل یک‌خطی در بخش انگلیسی همین فایل را آماده می‌کند.
-4. سپس در **Strategy Tester** حالت *Every tick based on real ticks* را انتخاب کنید.
+3. سپس در **Strategy Tester** حالت *Every tick based on real ticks* را انتخاب کنید.
 
 **متاتریدر ۴:** امکان ایمپورت مستقیم تیک CSV ندارد؛ با ابزارهایی مثل **TickStory** یا **CSV2FXT** فایل را به `.fxt`/`.hst` تبدیل کنید تا بک‌تست با کیفیت مدلینگ ۹۹٪ بگیرید.
 
@@ -102,8 +90,7 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 **MetaTrader 5 (рекомендуется):**
 1. `Вид → Символы (Ctrl+U)` → **Custom** → создайте **пользовательский символ** (например, `EURUSD.ticks`).
 2. Откройте символ → вкладка **Тики** → **Импорт тиков**.
-3. MT5 требует файл с разделителем **TAB** и датой `YYYY.MM.DD`, колонки: `<DATE> <TIME> <BID> <ASK> <LAST> <VOLUME> <FLAGS>` — скрипт конвертации см. в английском разделе.
-4. Запускайте тесты в **Тестере стратегий** в режиме *Каждый тик на основе реальных тиков*.
+3. Запускайте тесты в **Тестере стратегий** в режиме *Каждый тик на основе реальных тиков*.
 
 **MetaTrader 4:** прямой импорт тиков не поддерживается. Используйте **TickStory** или **CSV2FXT** для создания файлов `.fxt`/`.hst` (качество моделирования 99%).
 
@@ -133,8 +120,7 @@ GmtTime,Bid,Ask,BidVolume,AskVolume
 **MetaTrader 5 (موصى به):**
 1. من `View → Symbols (Ctrl+U)` أنشئ **رمزًا مخصصًا** في قسم **Custom** (مثلاً `EURUSD.ticks`).
 2. افتح الرمز → تبويب **Ticks** → **Import Ticks**.
-3. يتطلب MT5 ملفًا مفصولًا بـ **TAB** وتاريخًا بصيغة `YYYY.MM.DD` بالأعمدة: `<DATE> <TIME> <BID> <ASK> <LAST> <VOLUME> <FLAGS>` — راجع سكربت التحويل في القسم الإنجليزي.
-4. ثم استخدم **Strategy Tester** بوضع *Every tick based on real ticks*.
+3. ثم استخدم **Strategy Tester** بوضع *Every tick based on real ticks*.
 
 **MetaTrader 4:** لا يدعم الاستيراد المباشر للتيك. استخدم أدوات مثل **TickStory** أو **CSV2FXT** لتحويل الملف إلى `.fxt`/`.hst` للحصول على اختبار بجودة نمذجة 99%.
 
@@ -165,8 +151,7 @@ JavaScript
 **MetaTrader 5 (recomendado):**
 1. En `Ver → Símbolos (Ctrl+U)` crea un **símbolo personalizado** en **Custom** (p. ej. `EURUSD.ticks`).
 2. Abre el símbolo → pestaña **Ticks** → **Importar ticks**.
-3. MT5 requiere un archivo separado por **tabulaciones** con fecha `YYYY.MM.DD` y columnas `<DATE> <TIME> <BID> <ASK> <LAST> <VOLUME> <FLAGS>` — consulta el script de conversión en la sección en inglés.
-4. Después usa el **Probador de estrategias** con el modo *Cada tick basado en ticks reales*.
+3. Después usa el **Probador de estrategias** con el modo *Cada tick basado en ticks reales*.
 
 **MetaTrader 4:** no permite importar CSV de ticks directamente. Usa **TickStory** o **CSV2FXT** para generar archivos `.fxt`/`.hst` y obtener backtests con 99% de calidad de modelado.
 
