@@ -1,0 +1,52 @@
+name: Download EURUSD tick data
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  download:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350          # سقف ۶ ساعت برای هر job
+    strategy:
+      fail-fast: false            # خرابی یک سال، بقیه را کنسل نکند
+      matrix:
+        year: [2010]
+
+    steps:
+      - uses: actions/checkout@v4   # برای دسترسی به convert.py
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download ticks for year ${{ matrix.year }}
+        run: |
+          NEXT=$(( ${{ matrix.year }} + 1 ))
+          npx -y dukascopy-node \
+            -i eurusd \
+            -from ${{ matrix.year }}-01-01 \
+            -to ${NEXT}-01-01 \
+            -t tick \
+            -f csv
+
+      - name: Convert CSV to JForex format (GMT)
+        run: python convert.py eurusd-ticks-${{ matrix.year }}.csv
+
+      - name: Zip CSV (reduce size)
+        run: zip -9 -j eurusd-ticks-${{ matrix.year }}.zip eurusd-ticks-${{ matrix.year }}.csv
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ticks-${{ matrix.year }}
+          name: EURUSD ticks ${{ matrix.year }}
+          files: ./eurusd-ticks-${{ matrix.year }}.zip
