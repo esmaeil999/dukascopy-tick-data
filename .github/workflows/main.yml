@@ -50,7 +50,7 @@ jobs:
       - name: Download ticks
         run: |
           npx -y dukascopy-node \
-            -i $(echo "${{ inputs.instrument }}" | tr 'A-Z' 'a-z') \
+            -i "${{ inputs.instrument }}" \
             -from ${{ steps.meta.outputs.from_date }} \
             -to ${{ steps.meta.outputs.to_date }} \
             -t tick \
