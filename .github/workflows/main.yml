@@ -74,8 +74,9 @@ jobs:
     rm "${{ steps.meta.outputs.slug }}.zip"
 
       - name: Publish to GitHub Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.meta.outputs.slug }}
-          name: ${{ inputs.instrument }} ticks ${{ steps.meta.outputs.from_date }} to ${{ steps.meta.outputs.to_date }}
-          files: ./${{ steps.meta.outputs.slug }}.zip
+  uses: softprops/action-gh-release@v2
+  with:
+    tag_name: ${{ steps.meta.outputs.slug }}
+    name: ${{ inputs.instrument }} ticks ${{ steps.meta.outputs.from_date }} to ${{ steps.meta.outputs.to_date }}
+    files: |
+      ./${{ steps.meta.outputs.slug }}.zip.part-*
