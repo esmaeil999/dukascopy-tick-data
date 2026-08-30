@@ -7,10 +7,12 @@ on:
         description: "Instrument (e.g. EURUSD)"
         required: true
         default: "EURUSD"
+
       from:
         description: "Start, GMT — YYYY-MM-DD HH:mm:ss"
         required: true
         default: "2025-01-01 00:00:00"
+
       to:
         description: "End, GMT — YYYY-MM-DD HH:mm:ss"
         required: true
@@ -25,32 +27,66 @@ jobs:
     timeout-minutes: 350
 
     steps:
-      - uses: actions/checkout@v4
 
+      # ------------------------------------------------------------
+      # Checkout repository
+      # ------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+
+      # ------------------------------------------------------------
+      # Setup Node.js
+      # ------------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
 
+
+      # ------------------------------------------------------------
+      # Setup Python
+      # ------------------------------------------------------------
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
+
+      # ------------------------------------------------------------
+      # Prepare names
+      # ------------------------------------------------------------
       - name: Prepare names
         id: meta
+        shell: bash
         run: |
+          set -e
+
           FROM_DATE=$(echo "${{ inputs.from }}" | cut -d' ' -f1)
           TO_DATE=$(echo "${{ inputs.to }}" | cut -d' ' -f1)
 
-          SLUG=$(echo "${{ inputs.instrument }}" | tr 'A-Z' 'a-z')-ticks-${FROM_DATE}-to-${TO_DATE}
+          INSTRUMENT=$(echo "${{ inputs.instrument }}" | tr 'A-Z' 'a-z')
+
+          SLUG="${INSTRUMENT}-ticks-${FROM_DATE}-to-${TO_DATE}"
 
           echo "slug=${SLUG}" >> "$GITHUB_OUTPUT"
           echo "from_date=${FROM_DATE}" >> "$GITHUB_OUTPUT"
           echo "to_date=${TO_DATE}" >> "$GITHUB_OUTPUT"
 
+          echo "Instrument : ${INSTRUMENT}"
+          echo "From       : ${FROM_DATE}"
+          echo "To         : ${TO_DATE}"
+          echo "Slug       : ${SLUG}"
+
+
+      # ------------------------------------------------------------
+      # Download Dukascopy tick data
+      # ------------------------------------------------------------
       - name: Download ticks
+        shell: bash
         run: |
+          set -e
+
           npx -y dukascopy-node \
             -i "${{ inputs.instrument }}" \
             -from "${{ steps.meta.outputs.from_date }}" \
@@ -58,25 +94,185 @@ jobs:
             -t tick \
             -f csv
 
+
+      # ------------------------------------------------------------
+      # Convert CSV to JForex format
+      # ------------------------------------------------------------
       - name: Convert CSV to JForex format (GMT)
+        shell: bash
         run: |
-          python convert.py "${{ steps.meta.outputs.slug }}.csv"
+          set -e
 
-      - name: Compress and split CSV
-  run: |
-    zip -9 "${{ steps.meta.outputs.slug }}.zip" \
-      "${{ steps.meta.outputs.slug }}.csv"
+          python convert.py \
+            "${{ steps.meta.outputs.slug }}.csv"
 
-    split -b 1500M \
-      "${{ steps.meta.outputs.slug }}.zip" \
-      "${{ steps.meta.outputs.slug }}.zip.part-"
 
-    rm "${{ steps.meta.outputs.slug }}.zip"
+      # ------------------------------------------------------------
+      # Zip CSV
+      # ------------------------------------------------------------
+      - name: Zip CSV
+        shell: bash
+        run: |
+          set -e
 
+          zip -9 -j \
+            "${{ steps.meta.outputs.slug }}.zip" \
+            "${{ steps.meta.outputs.slug }}.csv"
+
+
+      # ------------------------------------------------------------
+      # Show ZIP size
+      # ------------------------------------------------------------
+      - name: Check ZIP size
+        shell: bash
+        run: |
+          set -e
+
+          ZIP_FILE="${{ steps.meta.outputs.slug }}.zip"
+
+          echo "=========================================="
+          echo "ZIP file:"
+          echo "${ZIP_FILE}"
+          echo "=========================================="
+
+          ls -lh "${ZIP_FILE}"
+
+          SIZE_BYTES=$(stat -c%s "${ZIP_FILE}")
+          SIZE_GB=$(awk "BEGIN {printf \"%.2f\", ${SIZE_BYTES}/1024/1024/1024}")
+
+          echo "Size: ${SIZE_BYTES} bytes"
+          echo "Size: ${SIZE_GB} GiB"
+
+          # GitHub Release Asset maximum is 2 GiB.
+          # We split at 1.9 GiB to leave a safety margin.
+          MAX_BYTES=2040109465
+
+          if [ "${SIZE_BYTES}" -ge "${MAX_BYTES}" ]; then
+            echo ""
+            echo "ZIP is larger than the safe GitHub Release limit."
+            echo "The ZIP will be split into multiple parts."
+          else
+            echo ""
+            echo "ZIP is below the safe limit."
+            echo "No splitting is required."
+          fi
+
+
+      # ------------------------------------------------------------
+      # Split large ZIP into parts
+      #
+      # Each part is approximately 1.9 GiB.
+      # This keeps every GitHub Release asset safely below 2 GiB.
+      # ------------------------------------------------------------
+      - name: Split large ZIP if necessary
+        shell: bash
+        run: |
+          set -e
+
+          ZIP_FILE="${{ steps.meta.outputs.slug }}.zip"
+
+          # 1.9 GiB
+          MAX_BYTES=2040109465
+
+          SIZE_BYTES=$(stat -c%s "${ZIP_FILE}")
+
+          if [ "${SIZE_BYTES}" -lt "${MAX_BYTES}" ]; then
+
+            echo "ZIP does not need splitting."
+
+            # Create a marker so the next step knows
+            # that the original ZIP should be uploaded.
+            touch ".upload_original"
+
+          else
+
+            echo "ZIP is too large."
+            echo "Splitting into approximately 1.9 GiB parts..."
+
+            split \
+              -b 1900M \
+              -d \
+              -a 2 \
+              "${ZIP_FILE}" \
+              "${ZIP_FILE}.part-"
+
+            echo ""
+            echo "Created parts:"
+            ls -lh "${ZIP_FILE}.part-"*
+
+            echo ""
+            echo "Checking individual part sizes..."
+
+            for FILE in "${ZIP_FILE}.part-"*; do
+
+              SIZE=$(stat -c%s "${FILE}")
+
+              SIZE_GIB=$(awk \
+                "BEGIN {printf \"%.2f\", ${SIZE}/1024/1024/1024}")
+
+              echo "${FILE}: ${SIZE} bytes (${SIZE_GIB} GiB)"
+
+              if [ "${SIZE}" -ge 2147483648 ]; then
+                echo ""
+                echo "ERROR: ${FILE} is too large!"
+                exit 1
+              fi
+
+            done
+
+            echo ""
+            echo "All parts are below the GitHub 2 GiB limit."
+
+          fi
+
+
+      # ------------------------------------------------------------
+      # Prepare files for GitHub Release
+      # ------------------------------------------------------------
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          set -e
+
+          ZIP_FILE="${{ steps.meta.outputs.slug }}.zip"
+
+          rm -rf release-assets
+          mkdir -p release-assets
+
+          if [ -f ".upload_original" ]; then
+
+            echo "Using original ZIP."
+
+            cp "${ZIP_FILE}" \
+              "release-assets/${ZIP_FILE}"
+
+          else
+
+            echo "Using split ZIP parts."
+
+            cp "${ZIP_FILE}.part-"* \
+              release-assets/
+
+          fi
+
+          echo ""
+          echo "Release assets:"
+          ls -lh release-assets/
+
+
+      # ------------------------------------------------------------
+      # Publish to GitHub Releases
+      # ------------------------------------------------------------
       - name: Publish to GitHub Releases
-  uses: softprops/action-gh-release@v2
-  with:
-    tag_name: ${{ steps.meta.outputs.slug }}
-    name: ${{ inputs.instrument }} ticks ${{ steps.meta.outputs.from_date }} to ${{ steps.meta.outputs.to_date }}
-    files: |
-      ./${{ steps.meta.outputs.slug }}.zip.part-*
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.meta.outputs.slug }}
+
+          name: ${{ inputs.instrument }} ticks ${{ steps.meta.outputs.from_date }} to ${{ steps.meta.outputs.to_date }}
+
+          files: |
+            release-assets/*
+
+          overwrite_files: true
+
+          fail_on_unmatched_files: true
