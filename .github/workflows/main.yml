@@ -42,7 +42,9 @@ jobs:
         run: |
           FROM_DATE=$(echo "${{ inputs.from }}" | cut -d' ' -f1)
           TO_DATE=$(echo "${{ inputs.to }}" | cut -d' ' -f1)
+
           SLUG=$(echo "${{ inputs.instrument }}" | tr 'A-Z' 'a-z')-ticks-${FROM_DATE}-to-${TO_DATE}
+
           echo "slug=${SLUG}" >> "$GITHUB_OUTPUT"
           echo "from_date=${FROM_DATE}" >> "$GITHUB_OUTPUT"
           echo "to_date=${TO_DATE}" >> "$GITHUB_OUTPUT"
@@ -51,16 +53,20 @@ jobs:
         run: |
           npx -y dukascopy-node \
             -i "${{ inputs.instrument }}" \
-            -from ${{ steps.meta.outputs.from_date }} \
-            -to ${{ steps.meta.outputs.to_date }} \
+            -from "${{ steps.meta.outputs.from_date }}" \
+            -to "${{ steps.meta.outputs.to_date }}" \
             -t tick \
             -f csv
 
       - name: Convert CSV to JForex format (GMT)
-        run: python convert.py ${{ steps.meta.outputs.slug }}.csv
+        run: |
+          python convert.py "${{ steps.meta.outputs.slug }}.csv"
 
       - name: Zip CSV (reduce size)
-        run: zip -9 -j ${{ steps.meta.outputs.slug }}.zip ${{ steps.meta.outputs.slug }}.csv
+        run: |
+          zip -9 -j \
+            "${{ steps.meta.outputs.slug }}.zip" \
+            "${{ steps.meta.outputs.slug }}.csv"
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
