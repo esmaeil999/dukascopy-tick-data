@@ -62,11 +62,16 @@ jobs:
         run: |
           python convert.py "${{ steps.meta.outputs.slug }}.csv"
 
-      - name: Zip CSV (reduce size)
-        run: |
-          zip -9 -j \
-            "${{ steps.meta.outputs.slug }}.zip" \
-            "${{ steps.meta.outputs.slug }}.csv"
+      - name: Compress and split CSV
+  run: |
+    zip -9 "${{ steps.meta.outputs.slug }}.zip" \
+      "${{ steps.meta.outputs.slug }}.csv"
+
+    split -b 1500M \
+      "${{ steps.meta.outputs.slug }}.zip" \
+      "${{ steps.meta.outputs.slug }}.zip.part-"
+
+    rm "${{ steps.meta.outputs.slug }}.zip"
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
