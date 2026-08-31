@@ -1,4 +1,4 @@
-name: Download Dukascopy tick data
+name: Download Dukascopy Tick Data
 
 on:
 workflow_dispatch:
@@ -7,18 +7,14 @@ instrument:
 description: "Instrument"
 required: true
 default: "EURUSD"
-
-```
-  from:
-    description: "Start date GMT - YYYY-MM-DD"
-    required: true
-    default: "2025-01-01"
-
-  to:
-    description: "End date GMT - YYYY-MM-DD"
-    required: true
-    default: "2025-01-02"
-```
+start_date:
+description: "Start date YYYY-MM-DD"
+required: true
+default: "2025-01-01"
+end_date:
+description: "End date YYYY-MM-DD"
+required: true
+default: "2025-01-02"
 
 permissions:
 contents: write
@@ -46,28 +42,36 @@ steps:
   - name: Prepare inputs
     id: meta
     shell: bash
+    env:
+      INPUT_INSTRUMENT: ${{ inputs.instrument }}
+      INPUT_START: ${{ inputs.start_date }}
+      INPUT_END: ${{ inputs.end_date }}
     run: |
-      INSTRUMENT="$(echo '${{ inputs.instrument }}' | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')"
-      FROM_DATE="$(echo '${{ inputs.from }}' | cut -d' ' -f1)"
-      TO_DATE="$(echo '${{ inputs.to }}' | cut -d' ' -f1)"
+      set -e
 
-      INSTRUMENT_LOWER="$(echo "$INSTRUMENT" | tr '[:upper:]' '[:lower:]')"
+      INSTRUMENT=$(printf '%s' "$INPUT_INSTRUMENT" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')
+      FROM_DATE=$(printf '%s' "$INPUT_START" | tr -d '[:space:]')
+      TO_DATE=$(printf '%s' "$INPUT_END" | tr -d '[:space:]')
+
+      INSTRUMENT_LOWER=$(printf '%s' "$INSTRUMENT" | tr '[:upper:]' '[:lower:]')
 
       SLUG="${INSTRUMENT_LOWER}-ticks-${FROM_DATE}-to-${TO_DATE}"
-
-      echo "instrument=$INSTRUMENT" >> "$GITHUB_OUTPUT"
-      echo "from_date=$FROM_DATE" >> "$GITHUB_OUTPUT"
-      echo "to_date=$TO_DATE" >> "$GITHUB_OUTPUT"
-      echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
 
       echo "Instrument: $INSTRUMENT"
       echo "From: $FROM_DATE"
       echo "To: $TO_DATE"
       echo "Slug: $SLUG"
 
+      echo "instrument=$INSTRUMENT" >> "$GITHUB_OUTPUT"
+      echo "from_date=$FROM_DATE" >> "$GITHUB_OUTPUT"
+      echo "to_date=$TO_DATE" >> "$GITHUB_OUTPUT"
+      echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+
   - name: Download ticks
     shell: bash
     run: |
+      set -e
+
       npx -y dukascopy-node \
         -i "${{ steps.meta.outputs.instrument }}" \
         -from "${{ steps.meta.outputs.from_date }}" \
@@ -78,24 +82,45 @@ steps:
   - name: Show downloaded files
     shell: bash
     run: |
-      echo "Files after download:"
+      echo "Downloaded files:"
       ls -lah
 
   - name: Convert CSV
     shell: bash
     run: |
-      python convert.py "${{ steps.meta.outputs.slug }}.csv"
+      set -e
+
+      FILE="${{ steps.meta.outputs.slug }}.csv"
+
+      if [ ! -f "$FILE" ]; then
+        echo "ERROR: CSV file not found:"
+        echo "$FILE"
+        echo ""
+        echo "Available files:"
+        ls -lah
+        exit 1
+      fi
+
+      python convert.py "$FILE"
 
   - name: Zip CSV
     shell: bash
     run: |
-      zip -9 -j \
-        "${{ steps.meta.outputs.slug }}.zip" \
-        "${{ steps.meta.outputs.slug }}.csv"
+      set -e
+
+      CSV_FILE="${{ steps.meta.outputs.slug }}.csv"
+      ZIP_FILE="${{ steps.meta.outputs.slug }}.zip"
+
+      zip -9 -j "$ZIP_FILE" "$CSV_FILE"
+
+      echo "Created ZIP:"
+      ls -lh "$ZIP_FILE"
 
   - name: Split ZIP if larger than 1.9GB
     shell: bash
     run: |
+      set -e
+
       FILE="${{ steps.meta.outputs.slug }}.zip"
       LIMIT=$((1900 * 1024 * 1024))
 
@@ -114,8 +139,7 @@ steps:
         echo "Created parts:"
         ls -lh "${FILE}".*
       else
-        echo "ZIP is smaller than 1.9GB. No split required."
-        ls -lh "$FILE"
+        echo "ZIP is smaller than 1.9GB. No splitting required."
       fi
 
   - name: Publish to GitHub Release
