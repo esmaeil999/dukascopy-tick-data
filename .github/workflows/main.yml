@@ -8,7 +8,7 @@ description: "Instrument (e.g. EURUSD, GBPUSD, USDJPY, XAUUSD)"
 required: true
 default: "EURUSD"
 
-```
+
   from:
     description: "Start date (YYYY-MM-DD)"
     required: true
