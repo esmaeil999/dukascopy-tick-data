@@ -103,8 +103,6 @@ jobs:
           echo "${{ steps.gofile.outputs.download_page }}"
           echo "=========================================="
 
-      # بخش تلگرام (اختیاری)
-      # فقط وقتی هر دو Secret وجود داشته باشند اجرا می‌شود
       - name: Send link to Telegram
         if: ${{ env.BOT_TOKEN != '' && env.CHAT_ID != '' }}
         env:
@@ -112,15 +110,9 @@ jobs:
           CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           LINK="${{ steps.gofile.outputs.download_page }}"
-          MESSAGE="فایل آماده شد
-
-Instrument: ${{ inputs.instrument }}
-From: ${{ steps.meta.outputs.from_date }}
-To: ${{ steps.meta.outputs.to_date }}
-
-لینک دانلود:
-${LINK}"
-
+          
+          MESSAGE="فایل آماده شد%0A%0AInstrument: ${{ inputs.instrument }}%0AFrom: ${{ steps.meta.outputs.from_date }}%0ATo: ${{ steps.meta.outputs.to_date }}%0A%0Aلینک دانلود:%0A${LINK}"
+          
           curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
             -d chat_id="${CHAT_ID}" \
             -d text="${MESSAGE}"
