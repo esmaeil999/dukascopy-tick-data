@@ -8,13 +8,14 @@ on:
         required: true
         default: "EURUSD"
       from:
-        description: "Start, GMT — YYYY-MM-DD HH:mm:ss"
+        description: "Start date (YYYY-MM-DD)"
         required: true
-        default: "2025-01-01 00:00:00"
       to:
-        description: "End, GMT — YYYY-MM-DD HH:mm:ss"
+        description: "End date (YYYY-MM-DD)"
         required: true
-        default: "2025-01-02 00:00:00"
+      chat_id:
+        description: "Telegram Chat ID"
+        required: true
 
 permissions:
   contents: write
@@ -37,25 +38,18 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install jq
-        run: sudo apt-get update && sudo apt-get install -y jq
-
       - name: Prepare names
         id: meta
         run: |
-          FROM_DATE=$(echo "${{ inputs.from }}" | cut -d' ' -f1)
-          TO_DATE=$(echo "${{ inputs.to }}" | cut -d' ' -f1)
-          SLUG=$(echo "${{ inputs.instrument }}" | tr 'A-Z' 'a-z')-ticks-${FROM_DATE}-to-${TO_DATE}
+          SLUG=$(echo "${{ inputs.instrument }}" | tr 'A-Z' 'a-z')-ticks-${{ inputs.from }}-to-${{ inputs.to }}
           echo "slug=${SLUG}" >> "$GITHUB_OUTPUT"
-          echo "from_date=${FROM_DATE}" >> "$GITHUB_OUTPUT"
-          echo "to_date=${TO_DATE}" >> "$GITHUB_OUTPUT"
 
       - name: Download ticks
         run: |
           npx -y dukascopy-node \
             -i "${{ inputs.instrument }}" \
-            -from "${{ steps.meta.outputs.from_date }}" \
-            -to "${{ steps.meta.outputs.to_date }}" \
+            -from "${{ inputs.from }}" \
+            -to "${{ inputs.to }}" \
             -t tick \
             -f csv
 
@@ -63,56 +57,42 @@ jobs:
         run: |
           python convert.py "${{ steps.meta.outputs.slug }}.csv"
 
-      - name: Zip CSV (reduce size)
+      - name: Zip CSV
         run: |
           zip -9 -j \
             "${{ steps.meta.outputs.slug }}.zip" \
             "${{ steps.meta.outputs.slug }}.csv"
 
-      - name: Upload to GoFile
-        id: gofile
+      - name: Split if larger than 1.9GB
+        id: split
         run: |
           FILE="${{ steps.meta.outputs.slug }}.zip"
+          SIZE=$(stat -c%s "$FILE")
+          LIMIT=$((1900 * 1024 * 1024))   # 1.9 GB
           
-          echo "Getting best GoFile server..."
-          SERVER=$(curl -s https://api.gofile.io/servers | jq -r '.data.servers[0].name')
-          echo "Using server: $SERVER"
+          echo "File size: $SIZE bytes"
           
-          echo "Uploading $FILE to GoFile..."
-          RESPONSE=$(curl -s -X POST \
-            "https://${SERVER}.gofile.io/contents/uploadfile" \
-            -F "file=@${FILE}")
-          
-          echo "$RESPONSE" | jq .
-          
-          DOWNLOAD_PAGE=$(echo "$RESPONSE" | jq -r '.data.downloadPage')
-          
-          if [ -z "$DOWNLOAD_PAGE" ] || [ "$DOWNLOAD_PAGE" = "null" ]; then
-            echo "Upload to GoFile failed!"
-            exit 1
+          if [ "$SIZE" -gt "$LIMIT" ]; then
+            echo "File is larger than 1.9GB → splitting..."
+            split -b 1900M "$FILE" "${FILE}."
+            rm "$FILE"
+            echo "split=true" >> $GITHUB_OUTPUT
+            ls -lh ${FILE}.*
+          else
+            echo "File is under limit"
+            echo "split=false" >> $GITHUB_OUTPUT
           fi
-          
-          echo "download_page=$DOWNLOAD_PAGE" >> $GITHUB_OUTPUT
-          echo "Upload successful!"
-          echo "Download Page: $DOWNLOAD_PAGE"
 
-      - name: Show GoFile Link
-        run: |
-          echo "=========================================="
-          echo "GoFile Download Link:"
-          echo "${{ steps.gofile.outputs.download_page }}"
-          echo "=========================================="
-
-      - name: Send link to Telegram
-        if: ${{ env.BOT_TOKEN != '' && env.CHAT_ID != '' }}
-        env:
-          BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          LINK="${{ steps.gofile.outputs.download_page }}"
-          
-          MESSAGE="فایل آماده شد%0A%0AInstrument: ${{ inputs.instrument }}%0AFrom: ${{ steps.meta.outputs.from_date }}%0ATo: ${{ steps.meta.outputs.to_date }}%0A%0Aلینک دانلود:%0A${LINK}"
-          
-          curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-            -d chat_id="${CHAT_ID}" \
-            -d text="${MESSAGE}"
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.slug }}
+          name: ${{ inputs.instrument }} ticks ${{ inputs.from }} to ${{ inputs.to }}
+          body: |
+            Instrument: ${{ inputs.instrument }}
+            From: ${{ inputs.from }}
+            To: ${{ inputs.to }}
+            
+            برای یکی کردن فایل‌های تقسیم‌شده:
+            ```bash
+            cat ${{ steps.meta.outputs.slug }}.zip.* > ${{ steps.meta.outputs.slug }}.zip
