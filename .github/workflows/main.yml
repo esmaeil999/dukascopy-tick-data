@@ -1,93 +1,104 @@
 name: Download Dukascopy tick data
 
 on:
-  workflow_dispatch:
-    inputs:
-      instrument:
-        description: "Instrument (e.g. EURUSD)"
-        required: true
-        default: "EURUSD"
-      from:
-        description: "Start, GMT — YYYY-MM-DD HH:mm:ss"
-        required: true
-        default: "2025-01-01 00:00:00"
-      to:
-        description: "End, GMT — YYYY-MM-DD HH:mm:ss"
-        required: true
-        default: "2025-01-02 00:00:00"
+workflow_dispatch:
+inputs:
+instrument:
+description: "Instrument (e.g. EURUSD)"
+required: true
+default: "EURUSD"
+
+```
+  from:
+    description: "Start, GMT — YYYY-MM-DD HH:mm:ss"
+    required: true
+    default: "2025-01-01 00:00:00"
+
+  to:
+    description: "End, GMT — YYYY-MM-DD HH:mm:ss"
+    required: true
+    default: "2025-01-02 00:00:00"
+```
 
 permissions:
-  contents: write
+contents: write
 
 jobs:
-  download:
-    runs-on: ubuntu-latest
-    timeout-minutes: 350
+download:
+runs-on: ubuntu-latest
+timeout-minutes: 350
 
-    steps:
-      - uses: actions/checkout@v4
+```
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+  - name: Setup Node.js
+    uses: actions/setup-node@v4
+    with:
+      node-version: 24
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+  - name: Setup Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: "3.12"
 
-      - name: Prepare names
-        id: meta
-        run: |
-          FROM_DATE=$(echo "${{ inputs.from }}" | cut -d' ' -f1)
-          TO_DATE=$(echo "${{ inputs.to }}" | cut -d' ' -f1)
+  - name: Prepare names
+    id: meta
+    run: |
+      FROM_DATE=$(echo "${{ inputs.from }}" | cut -d' ' -f1)
+      TO_DATE=$(echo "${{ inputs.to }}" | cut -d' ' -f1)
 
-          SLUG=$(echo "${{ inputs.instrument }}" | tr 'A-Z' 'a-z')-ticks-${FROM_DATE}-to-${TO_DATE}
+      SLUG=$(echo "${{ inputs.instrument }}" | tr 'A-Z' 'a-z')-ticks-${FROM_DATE}-to-${TO_DATE}
 
-          echo "slug=${SLUG}" >> "$GITHUB_OUTPUT"
-          echo "from_date=${FROM_DATE}" >> "$GITHUB_OUTPUT"
-          echo "to_date=${TO_DATE}" >> "$GITHUB_OUTPUT"
+      echo "slug=${SLUG}" >> "$GITHUB_OUTPUT"
+      echo "from_date=${FROM_DATE}" >> "$GITHUB_OUTPUT"
+      echo "to_date=${TO_DATE}" >> "$GITHUB_OUTPUT"
 
-      - name: Download ticks
-        run: |
-          npx -y dukascopy-node \
-            -i "${{ inputs.instrument }}" \
-            -from "${{ steps.meta.outputs.from_date }}" \
-            -to "${{ steps.meta.outputs.to_date }}" \
-            -t tick \
-            -f csv
+  - name: Download ticks
+    run: |
+      npx -y dukascopy-node \
+        -i "${{ inputs.instrument }}" \
+        -from "${{ steps.meta.outputs.from_date }}" \
+        -to "${{ steps.meta.outputs.to_date }}" \
+        -t tick \
+        -f csv
 
-      - name: Convert CSV to JForex format (GMT)
-        run: |
-          python convert.py "${{ steps.meta.outputs.slug }}.csv"
+  - name: Convert CSV to JForex format (GMT)
+    run: |
+      python convert.py "${{ steps.meta.outputs.slug }}.csv"
 
-            - name: Zip CSV (reduce size)
-        run: |
-          zip -9 -j \
-            "${{ steps.meta.outputs.slug }}.zip" \
-            "${{ steps.meta.outputs.slug }}.csv"
+  - name: Zip CSV
+    run: |
+      zip -9 -j \
+        "${{ steps.meta.outputs.slug }}.zip" \
+        "${{ steps.meta.outputs.slug }}.csv"
 
-      - name: Split zip if larger than 1.9GB
-        run: |
-          FILE="${{ steps.meta.outputs.slug }}.zip"
-          SIZE=$(stat -c%s "$FILE")
-          LIMIT=$((1900 * 1024 * 1024))   # 1.9 GB
+  - name: Split zip if larger than 1.9GB
+    run: |
+      FILE="${{ steps.meta.outputs.slug }}.zip"
+      SIZE=$(stat -c%s "$FILE")
+      LIMIT=$((1900 * 1024 * 1024))
 
-          if [ "$SIZE" -gt "$LIMIT" ]; then
-            echo "File is larger than 1.9GB → splitting..."
-            split -b 1900M "$FILE" "${FILE}."
-            rm "$FILE"                     # فایل اصلی رو پاک می‌کنیم
-            ls -lh ${FILE}.*
-          else
-            echo "File is under limit, no need to split"
-          fi
+      if [ "$SIZE" -gt "$LIMIT" ]; then
+        echo "File is larger than 1.9GB → splitting..."
 
-      - name: Publish to GitHub Releases
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.meta.outputs.slug }}
-          name: ${{ inputs.instrument }} ticks ${{ steps.meta.outputs.from_date }} to ${{ steps.meta.outputs.to_date }}
-          files: |
-            ./${{ steps.meta.outputs.slug }}.zip
-            ./${{ steps.meta.outputs.slug }}.zip.*
+        split -b 1900M "$FILE" "${FILE}."
+
+        rm "$FILE"
+
+        echo "Created split files:"
+        ls -lh "${FILE}".*
+      else
+        echo "File is under limit, no need to split."
+      fi
+
+  - name: Publish to GitHub Releases
+    uses: softprops/action-gh-release@v2
+    with:
+      tag_name: ${{ steps.meta.outputs.slug }}
+      name: ${{ inputs.instrument }} ticks ${{ steps.meta.outputs.from_date }} to ${{ steps.meta.outputs.to_date }}
+      files: |
+        ./${{ steps.meta.outputs.slug }}.zip
+        ./${{ steps.meta.outputs.slug }}.zip.*
+```
