@@ -1,22 +1,25 @@
-name: Download Dukascopy tick data
+name: Download Dukascopy Tick Data
 
-on:
+"on":
 workflow_dispatch:
 inputs:
 instrument:
-description: "Instrument (e.g. EURUSD)"
+description: "Instrument (e.g. EURUSD, GBPUSD, USDJPY, XAUUSD)"
 required: true
+type: string
 default: "EURUSD"
 
 ```
   from:
-    description: "Start, GMT — YYYY-MM-DD HH:mm:ss"
+    description: "Start date, GMT — YYYY-MM-DD HH:mm:ss"
     required: true
+    type: string
     default: "2025-01-01 00:00:00"
 
   to:
-    description: "End, GMT — YYYY-MM-DD HH:mm:ss"
+    description: "End date, GMT — YYYY-MM-DD HH:mm:ss"
     required: true
+    type: string
     default: "2025-01-02 00:00:00"
 ```
 
@@ -30,74 +33,203 @@ timeout-minutes: 350
 
 ```
 steps:
+
+  # --------------------------------------------------
+  # Checkout
+  # --------------------------------------------------
+
   - name: Checkout repository
     uses: actions/checkout@v4
+
+
+  # --------------------------------------------------
+  # Node.js
+  # --------------------------------------------------
 
   - name: Setup Node.js
     uses: actions/setup-node@v4
     with:
-      node-version: 24
+      node-version: "24"
+
+
+  # --------------------------------------------------
+  # Python
+  # --------------------------------------------------
 
   - name: Setup Python
     uses: actions/setup-python@v5
     with:
       python-version: "3.12"
 
+
+  # --------------------------------------------------
+  # Prepare instrument and filenames
+  # --------------------------------------------------
+
   - name: Prepare names
     id: meta
+    shell: bash
     run: |
+      set -e
+
+      # Convert instrument to uppercase.
+      # EURUSD, eurusd, EurUsd, eUrUsD -> EURUSD
+      INSTRUMENT=$(echo "${{ inputs.instrument }}" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')
+
+      # Extract dates
       FROM_DATE=$(echo "${{ inputs.from }}" | cut -d' ' -f1)
       TO_DATE=$(echo "${{ inputs.to }}" | cut -d' ' -f1)
 
-      SLUG=$(echo "${{ inputs.instrument }}" | tr 'A-Z' 'a-z')-ticks-${FROM_DATE}-to-${TO_DATE}
+      # Convert instrument to lowercase for filename
+      INSTRUMENT_LOWER=$(echo "$INSTRUMENT" | tr '[:upper:]' '[:lower:]')
 
-      echo "slug=${SLUG}" >> "$GITHUB_OUTPUT"
-      echo "from_date=${FROM_DATE}" >> "$GITHUB_OUTPUT"
-      echo "to_date=${TO_DATE}" >> "$GITHUB_OUTPUT"
+      # Create common filename
+      SLUG="${INSTRUMENT_LOWER}-ticks-${FROM_DATE}-to-${TO_DATE}"
+
+      echo "Instrument: $INSTRUMENT"
+      echo "From: $FROM_DATE"
+      echo "To: $TO_DATE"
+      echo "Slug: $SLUG"
+
+      echo "instrument=$INSTRUMENT" >> "$GITHUB_OUTPUT"
+      echo "from_date=$FROM_DATE" >> "$GITHUB_OUTPUT"
+      echo "to_date=$TO_DATE" >> "$GITHUB_OUTPUT"
+      echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+
+
+  # --------------------------------------------------
+  # Download Dukascopy tick data
+  # --------------------------------------------------
 
   - name: Download ticks
+    shell: bash
     run: |
+      set -e
+
+      echo "Downloading tick data..."
+      echo "Instrument: ${{ steps.meta.outputs.instrument }}"
+      echo "From: ${{ steps.meta.outputs.from_date }}"
+      echo "To: ${{ steps.meta.outputs.to_date }}"
+
       npx -y dukascopy-node \
-        -i "${{ inputs.instrument }}" \
+        -i "${{ steps.meta.outputs.instrument }}" \
         -from "${{ steps.meta.outputs.from_date }}" \
         -to "${{ steps.meta.outputs.to_date }}" \
         -t tick \
         -f csv
 
+
+  # --------------------------------------------------
+  # Convert CSV to JForex format
+  # --------------------------------------------------
+
   - name: Convert CSV to JForex format (GMT)
+    shell: bash
     run: |
-      python convert.py "${{ steps.meta.outputs.slug }}.csv"
+      set -e
+
+      INPUT_FILE="${{ steps.meta.outputs.slug }}.csv"
+
+      if [ ! -f "$INPUT_FILE" ]; then
+        echo "ERROR: CSV file not found:"
+        echo "$INPUT_FILE"
+        echo ""
+        echo "Files in current directory:"
+        ls -lah
+        exit 1
+      fi
+
+      python convert.py "$INPUT_FILE"
+
+
+  # --------------------------------------------------
+  # Compress CSV
+  # --------------------------------------------------
 
   - name: Zip CSV
+    shell: bash
     run: |
-      zip -9 -j \
-        "${{ steps.meta.outputs.slug }}.zip" \
-        "${{ steps.meta.outputs.slug }}.csv"
+      set -e
+
+      CSV_FILE="${{ steps.meta.outputs.slug }}.csv"
+      ZIP_FILE="${{ steps.meta.outputs.slug }}.zip"
+
+      if [ ! -f "$CSV_FILE" ]; then
+        echo "ERROR: CSV file not found:"
+        echo "$CSV_FILE"
+        exit 1
+      fi
+
+      echo "Creating ZIP:"
+      echo "$ZIP_FILE"
+
+      zip -9 -j "$ZIP_FILE" "$CSV_FILE"
+
+      echo ""
+      echo "ZIP created:"
+      ls -lh "$ZIP_FILE"
+
+
+  # --------------------------------------------------
+  # Split ZIP if larger than 1.9 GB
+  # --------------------------------------------------
 
   - name: Split zip if larger than 1.9GB
+    shell: bash
     run: |
+      set -e
+
       FILE="${{ steps.meta.outputs.slug }}.zip"
+
+      if [ ! -f "$FILE" ]; then
+        echo "ERROR: ZIP file not found:"
+        echo "$FILE"
+        exit 1
+      fi
+
       SIZE=$(stat -c%s "$FILE")
+
+      # 1.9 GB
       LIMIT=$((1900 * 1024 * 1024))
 
+      echo "ZIP size: $SIZE bytes"
+      echo "Limit: $LIMIT bytes"
+
       if [ "$SIZE" -gt "$LIMIT" ]; then
-        echo "File is larger than 1.9GB → splitting..."
+
+        echo ""
+        echo "File is larger than 1.9GB."
+        echo "Splitting ZIP..."
 
         split -b 1900M "$FILE" "${FILE}."
 
         rm "$FILE"
 
-        echo "Created split files:"
+        echo ""
+        echo "Split files:"
         ls -lh "${FILE}".*
+
       else
-        echo "File is under limit, no need to split."
+
+        echo ""
+        echo "File is under 1.9GB."
+        echo "No splitting required."
+
+        ls -lh "$FILE"
+
       fi
+
+
+  # --------------------------------------------------
+  # Publish to GitHub Release
+  # --------------------------------------------------
 
   - name: Publish to GitHub Releases
     uses: softprops/action-gh-release@v2
     with:
       tag_name: ${{ steps.meta.outputs.slug }}
-      name: ${{ inputs.instrument }} ticks ${{ steps.meta.outputs.from_date }} to ${{ steps.meta.outputs.to_date }}
+      name: ${{ steps.meta.outputs.instrument }} ticks ${{ steps.meta.outputs.from_date }} to ${{ steps.meta.outputs.to_date }}
+      generate_release_notes: false
       files: |
         ./${{ steps.meta.outputs.slug }}.zip
         ./${{ steps.meta.outputs.slug }}.zip.*
