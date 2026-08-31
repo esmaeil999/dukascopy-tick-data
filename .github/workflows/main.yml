@@ -8,14 +8,13 @@ on:
         required: true
         default: "EURUSD"
       from:
-        description: "Start date (YYYY-MM-DD)"
+        description: "Start, GMT — YYYY-MM-DD HH:mm:ss"
         required: true
+        default: "2025-01-01 00:00:00"
       to:
-        description: "End date (YYYY-MM-DD)"
+        description: "End, GMT — YYYY-MM-DD HH:mm:ss"
         required: true
-      chat_id:
-        description: "Telegram Chat ID"
-        required: true
+        default: "2025-01-02 00:00:00"
 
 permissions:
   contents: write
@@ -41,15 +40,21 @@ jobs:
       - name: Prepare names
         id: meta
         run: |
-          SLUG=$(echo "${{ inputs.instrument }}" | tr 'A-Z' 'a-z')-ticks-${{ inputs.from }}-to-${{ inputs.to }}
+          FROM_DATE=$(echo "${{ inputs.from }}" | cut -d' ' -f1)
+          TO_DATE=$(echo "${{ inputs.to }}" | cut -d' ' -f1)
+
+          SLUG=$(echo "${{ inputs.instrument }}" | tr 'A-Z' 'a-z')-ticks-${FROM_DATE}-to-${TO_DATE}
+
           echo "slug=${SLUG}" >> "$GITHUB_OUTPUT"
+          echo "from_date=${FROM_DATE}" >> "$GITHUB_OUTPUT"
+          echo "to_date=${TO_DATE}" >> "$GITHUB_OUTPUT"
 
       - name: Download ticks
         run: |
           npx -y dukascopy-node \
             -i "${{ inputs.instrument }}" \
-            -from "${{ inputs.from }}" \
-            -to "${{ inputs.to }}" \
+            -from "${{ steps.meta.outputs.from_date }}" \
+            -to "${{ steps.meta.outputs.to_date }}" \
             -t tick \
             -f csv
 
@@ -57,42 +62,32 @@ jobs:
         run: |
           python convert.py "${{ steps.meta.outputs.slug }}.csv"
 
-      - name: Zip CSV
+            - name: Zip CSV (reduce size)
         run: |
           zip -9 -j \
             "${{ steps.meta.outputs.slug }}.zip" \
             "${{ steps.meta.outputs.slug }}.csv"
 
-      - name: Split if larger than 1.9GB
-        id: split
+      - name: Split zip if larger than 1.9GB
         run: |
           FILE="${{ steps.meta.outputs.slug }}.zip"
           SIZE=$(stat -c%s "$FILE")
           LIMIT=$((1900 * 1024 * 1024))   # 1.9 GB
-          
-          echo "File size: $SIZE bytes"
-          
+
           if [ "$SIZE" -gt "$LIMIT" ]; then
             echo "File is larger than 1.9GB → splitting..."
             split -b 1900M "$FILE" "${FILE}."
-            rm "$FILE"
-            echo "split=true" >> $GITHUB_OUTPUT
+            rm "$FILE"                     # فایل اصلی رو پاک می‌کنیم
             ls -lh ${FILE}.*
           else
-            echo "File is under limit"
-            echo "split=false" >> $GITHUB_OUTPUT
+            echo "File is under limit, no need to split"
           fi
 
       - name: Publish to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.slug }}
-          name: ${{ inputs.instrument }} ticks ${{ inputs.from }} to ${{ inputs.to }}
-          body: |
-            Instrument: ${{ inputs.instrument }}
-            From: ${{ inputs.from }}
-            To: ${{ inputs.to }}
-            
-            برای یکی کردن فایل‌های تقسیم‌شده:
-            ```bash
-            cat ${{ steps.meta.outputs.slug }}.zip.* > ${{ steps.meta.outputs.slug }}.zip
+          name: ${{ inputs.instrument }} ticks ${{ steps.meta.outputs.from_date }} to ${{ steps.meta.outputs.to_date }}
+          files: |
+            ./${{ steps.meta.outputs.slug }}.zip
+            ./${{ steps.meta.outputs.slug }}.zip.*
