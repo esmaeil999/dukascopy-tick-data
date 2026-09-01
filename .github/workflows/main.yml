@@ -94,7 +94,7 @@ jobs:
           echo "url=$UPLOAD_URL" >> $GITHUB_OUTPUT
           echo "Uploaded to: $UPLOAD_URL"
 
-      - name: Notify Telegram
+            - name: Notify Telegram
         if: success()
         env:
           TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
@@ -106,12 +106,12 @@ jobs:
         run: |
           MESSAGE="✅ Download completed!
 
-Instrument: *${INSTRUMENT}*
-From: \`${FROM}\`
-To: \`${TO}\`
+          Instrument: *${INSTRUMENT}*
+          From: \`${FROM}\`
+          To: \`${TO}\`
 
-📥 Download:
-${URL}"
+          📥 Download:
+          ${URL}"
 
           curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
             -d chat_id="${CHAT_ID}" \
