@@ -104,7 +104,7 @@ jobs:
           FROM: ${{ steps.meta.outputs.from_date }}
           TO: ${{ steps.meta.outputs.to_date }}
         run: |
-          TEXT="✅ Download completed!%0A%0AInstrument: *${INSTRUMENT}*%0AFrom: \`${FROM}\`%0ATo: \`${TO}\`%0A%0A📥 Download:%0A${URL}"
+        TEXT="✅ Download completed!%0A%0AInstrument: *${INSTRUMENT}*%0AFrom: \`${FROM}\`%0ATo: \`${TO}\`%0A%0A📥 Download:%0A${URL}"
           curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
             -d chat_id="${CHAT_ID}" \
             -d parse_mode="Markdown" \
