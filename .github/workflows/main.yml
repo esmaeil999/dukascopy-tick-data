@@ -4,23 +4,24 @@ on:
   workflow_dispatch:
     inputs:
       instrument:
-        description: "Instrument (EURUSD, GBPUSD, USDJPY, XAUUSD)"
+        description: "Instrument"
         required: true
         default: "EURUSD"
-
+        type: string
       from:
-        description: "Start date YYYY-MM-DD"
+        description: "Start date (YYYY-MM-DD)"
         required: true
         default: "2025-01-01"
-
+        type: string
       to:
-        description: "End date YYYY-MM-DD"
+        description: "End date (YYYY-MM-DD)"
         required: true
         default: "2025-01-02"
-
+        type: string
       chat_id:
         description: "Telegram Chat ID"
         required: true
+        type: string
 
 permissions:
   contents: write
@@ -31,14 +32,13 @@ jobs:
     timeout-minutes: 350
 
     steps:
-
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "20"
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -47,32 +47,22 @@ jobs:
 
       - name: Prepare inputs
         id: meta
-        shell: bash
-        env:
-          RAW_INSTRUMENT: ${{ inputs.instrument }}
-          RAW_FROM: ${{ inputs.from }}
-          RAW_TO: ${{ inputs.to }}
         run: |
-          set -e
-
-          INSTRUMENT=$(printf '%s' "$RAW_INSTRUMENT" | tr '[:lower:]' '[:upper:]' | tr -d '[:space:]')
-          FROM_DATE=$(printf '%s' "$RAW_FROM" | cut -d' ' -f1)
-          TO_DATE=$(printf '%s' "$RAW_TO" | cut -d' ' -f1)
-          INSTRUMENT_LOWER=$(printf '%s' "$INSTRUMENT" | tr '[:upper:]' '[:lower:]')
+          INSTRUMENT=$(echo "${{ inputs.instrument }}" | tr '[:lower:]' '[:upper:]' | tr -d ' ')
+          FROM_DATE=$(echo "${{ inputs.from }}" | cut -d' ' -f1)
+          TO_DATE=$(echo "${{ inputs.to }}" | cut -d' ' -f1)
+          INSTRUMENT_LOWER=$(echo "$INSTRUMENT" | tr '[:upper:]' '[:lower:]')
           SLUG="${INSTRUMENT_LOWER}-ticks-${FROM_DATE}-to-${TO_DATE}"
 
-          echo "instrument=$INSTRUMENT_LOWER" >> "$GITHUB_OUTPUT"
-          echo "instrument_upper=$INSTRUMENT" >> "$GITHUB_OUTPUT"
-          echo "from_date=$FROM_DATE" >> "$GITHUB_OUTPUT"
-          echo "to_date=$TO_DATE" >> "$GITHUB_OUTPUT"
-          echo "slug=$SLUG" >> "$GITHUB_OUTPUT"
+          echo "instrument=$INSTRUMENT_LOWER" >> $GITHUB_OUTPUT
+          echo "instrument_upper=$INSTRUMENT" >> $GITHUB_OUTPUT
+          echo "from_date=$FROM_DATE" >> $GITHUB_OUTPUT
+          echo "to_date=$TO_DATE" >> $GITHUB_OUTPUT
+          echo "slug=$SLUG" >> $GITHUB_OUTPUT
 
       - name: Download ticks
-        shell: bash
         run: |
-          set -e
           mkdir -p download
-
           npx -y dukascopy-node \
             -i "${{ steps.meta.outputs.instrument }}" \
             -from "${{ steps.meta.outputs.from_date }}" \
@@ -81,67 +71,49 @@ jobs:
             -f csv \
             -dir "./download"
 
-      - name: Find downloaded CSV
-        shell: bash
+      - name: Find and prepare CSV
         run: |
-          set -e
-          CSV_FILE=$(find download -type f -name "*.csv" | head -n 1)
-
+          CSV_FILE=$(find download -name "*.csv" | head -n 1)
           if [ -z "$CSV_FILE" ]; then
-            echo "ERROR: No CSV file was downloaded."
+            echo "No CSV file found"
             exit 1
           fi
-
           cp "$CSV_FILE" "${{ steps.meta.outputs.slug }}.csv"
 
-      - name: Convert CSV to JForex format
-        shell: bash
-        run: |
-          set -e
-          python convert.py "${{ steps.meta.outputs.slug }}.csv"
+      - name: Convert to JForex format
+        run: python convert.py "${{ steps.meta.outputs.slug }}.csv"
 
-      - name: Zip CSV
-        shell: bash
-        run: |
-          set -e
-          zip -9 -j "${{ steps.meta.outputs.slug }}.zip" "${{ steps.meta.outputs.slug }}.csv"
+      - name: Create ZIP
+        run: zip -9 -j "${{ steps.meta.outputs.slug }}.zip" "${{ steps.meta.outputs.slug }}.csv"
 
       - name: Upload to transfer.sh
         id: upload
-        shell: bash
         run: |
-          set -e
-
           FILE="${{ steps.meta.outputs.slug }}.zip"
-
-          echo "Uploading $FILE to transfer.sh ..."
           UPLOAD_URL=$(curl --upload-file "$FILE" "https://transfer.sh/$(basename $FILE)")
+          echo "url=$UPLOAD_URL" >> $GITHUB_OUTPUT
+          echo "Uploaded to: $UPLOAD_URL"
 
-          echo "Upload URL: $UPLOAD_URL"
-          echo "url=$UPLOAD_URL" >> "$GITHUB_OUTPUT"
-
-      - name: Send Telegram Notification
+      - name: Notify Telegram
         if: success()
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ inputs.chat_id }}
-          DOWNLOAD_URL: ${{ steps.upload.outputs.url }}
+          URL: ${{ steps.upload.outputs.url }}
           INSTRUMENT: ${{ steps.meta.outputs.instrument_upper }}
           FROM: ${{ steps.meta.outputs.from_date }}
           TO: ${{ steps.meta.outputs.to_date }}
         run: |
-          MESSAGE="✅ Download completed successfully!
+          MESSAGE="✅ Download completed!
 
 Instrument: *${INSTRUMENT}*
 From: \`${FROM}\`
 To: \`${TO}\`
 
-📥 Download Link:
-${DOWNLOAD_URL}
+📥 Download:
+${URL}"
 
-(The link usually expires after a few days)"
-
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+          curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
             -d chat_id="${CHAT_ID}" \
             -d text="${MESSAGE}" \
             -d parse_mode="Markdown"
