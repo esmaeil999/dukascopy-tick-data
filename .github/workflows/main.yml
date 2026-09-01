@@ -72,6 +72,7 @@ jobs:
         run: |
           set -e
           mkdir -p download
+
           npx -y dukascopy-node \
             -i "${{ steps.meta.outputs.instrument }}" \
             -from "${{ steps.meta.outputs.from_date }}" \
@@ -85,10 +86,12 @@ jobs:
         run: |
           set -e
           CSV_FILE=$(find download -type f -name "*.csv" | head -n 1)
+
           if [ -z "$CSV_FILE" ]; then
             echo "ERROR: No CSV file was downloaded."
             exit 1
           fi
+
           cp "$CSV_FILE" "${{ steps.meta.outputs.slug }}.csv"
 
       - name: Convert CSV to JForex format
@@ -103,52 +106,40 @@ jobs:
           set -e
           zip -9 -j "${{ steps.meta.outputs.slug }}.zip" "${{ steps.meta.outputs.slug }}.csv"
 
-      - name: Split ZIP if larger than 1.9GB
+      - name: Upload to transfer.sh
+        id: upload
         shell: bash
         run: |
           set -e
+
           FILE="${{ steps.meta.outputs.slug }}.zip"
-          SIZE=$(stat -c%s "$FILE")
-          LIMIT=$((1900 * 1024 * 1024))
 
-          if [ "$SIZE" -gt "$LIMIT" ]; then
-            split -b 1900M "$FILE" "${FILE}."
-            rm "$FILE"
-          fi
+          echo "Uploading $FILE to transfer.sh ..."
+          UPLOAD_URL=$(curl --upload-file "$FILE" "https://transfer.sh/$(basename $FILE)")
 
-      - name: Publish to GitHub Release
-        id: release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.meta.outputs.slug }}
-          name: ${{ steps.meta.outputs.instrument_upper }} ticks ${{ steps.meta.outputs.from_date }} to ${{ steps.meta.outputs.to_date }}
-          generate_release_notes: false
-          files: |
-            ./${{ steps.meta.outputs.slug }}.zip
-            ./${{ steps.meta.outputs.slug }}.zip.*
+          echo "Upload URL: $UPLOAD_URL"
+          echo "url=$UPLOAD_URL" >> "$GITHUB_OUTPUT"
 
       - name: Send Telegram Notification
         if: success()
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           CHAT_ID: ${{ inputs.chat_id }}
-          SLUG: ${{ steps.meta.outputs.slug }}
+          DOWNLOAD_URL: ${{ steps.upload.outputs.url }}
           INSTRUMENT: ${{ steps.meta.outputs.instrument_upper }}
           FROM: ${{ steps.meta.outputs.from_date }}
           TO: ${{ steps.meta.outputs.to_date }}
-          REPO: ${{ github.repository }}
         run: |
-          # لینک صفحه Release
-          RELEASE_URL="https://github.com/${REPO}/releases/tag/${SLUG}"
+          MESSAGE="✅ Download completed successfully!
 
-          MESSAGE="✅ دانلود با موفقیت انجام شد
+Instrument: *${INSTRUMENT}*
+From: \`${FROM}\`
+To: \`${TO}\`
 
-          جفت ارز: *${INSTRUMENT}*
-          از: \`${FROM}\`
-          تا: \`${TO}\`
+📥 Download Link:
+${DOWNLOAD_URL}
 
-          📥 لینک دانلود:
-          ${RELEASE_URL}"
+(The link usually expires after a few days)"
 
           curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="${CHAT_ID}" \
